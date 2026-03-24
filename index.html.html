@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perro Andaluz — Real-Time AI Visual System for Live Rock</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#000;--bg2:#0a0a12;--bg3:#111119;
+  --red:#C0392B;--blue:#4d7cff;--cyan:#00FFE0;--purple:#7c4dff;--orange:#ff6b35;
+  --text:#eeeef2;--text2:#8888a0;--text3:#44445a;--border:rgba(255,255,255,0.06);
+  --hd:'Space Grotesk',sans-serif;--bd:'Inter',sans-serif;--mn:'JetBrains Mono',monospace;
+  --accent:var(--cyan);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;cursor:none}
+body{background:var(--bg);color:var(--text);font-family:var(--bd);-webkit-font-smoothing:antialiased;overflow-x:hidden;cursor:none}
+
+/* ══ LOADING SCREEN ══ */
+.loader{position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .6s,visibility .6s}
+.loader.done{opacity:0;visibility:hidden;pointer-events:none}
+.loader-eye{width:120px;height:60px;border:2px solid var(--cyan);border-radius:50%;position:relative;animation:loaderPulse 1.2s ease-in-out infinite}
+.loader-eye::after{content:'';position:absolute;top:50%;left:50%;width:20px;height:20px;background:var(--red);border-radius:50%;transform:translate(-50%,-50%);animation:loaderPupil 1.2s ease-in-out infinite}
+@keyframes loaderPulse{0%,100%{transform:scaleX(1);opacity:1}50%{transform:scaleX(1.1);opacity:.7}}
+@keyframes loaderPupil{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(.6)}}
+.loader-text{font-family:var(--mn);font-size:10px;letter-spacing:4px;text-transform:uppercase;color:var(--cyan);margin-top:24px;opacity:.6}
+.loader-bar{width:200px;height:1px;background:var(--bg3);margin-top:16px;position:relative;overflow:hidden}
+.loader-bar::after{content:'';position:absolute;left:0;top:0;height:100%;width:0;background:var(--cyan);animation:loaderFill 1.8s ease-out forwards}
+@keyframes loaderFill{to{width:100%}}
+
+/* ══ CUSTOM CURSOR ══ */
+.cur-o{position:fixed;width:36px;height:36px;border:1.5px solid var(--cyan);border-radius:50%;pointer-events:none;z-index:10000;transition:width 0.2s,height 0.2s,border-color 0.2s,background 0.2s;transform:translate(-50%,-50%);mix-blend-mode:difference}
+.cur-i{position:fixed;width:6px;height:6px;background:var(--cyan);border-radius:50%;pointer-events:none;z-index:10001;transform:translate(-50%,-50%);transition:transform 0.1s}
+body.cur-hover .cur-o{width:56px;height:56px;border-color:var(--red);background:rgba(192,57,43,0.1)}
+body.cur-hover .cur-i{transform:translate(-50%,-50%) scale(1.5);background:var(--red)}
+body.white-mode .cur-o{border-color:var(--red);mix-blend-mode:normal}
+body.white-mode .cur-i{background:var(--red)}
+
+/* ══ THREE.JS CANVAS ══ */
+#three-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
+
+/* ══ GRID BACKGROUND ══ */
+.grid-bg{position:fixed;inset:0;background-image:radial-gradient(circle at 50% 0%,rgba(0,255,224,0.05) 0%,transparent 50%),linear-gradient(rgba(0,255,224,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,224,0.02) 1px,transparent 1px);background-size:100% 100%,80px 80px,80px 80px;pointer-events:none;z-index:1;opacity:0.4;transition:opacity 0.8s}
+body.white-mode .grid-bg{opacity:0;background-image:none}
+
+/* ══ SECTION TEXTURE OVERLAYS ══ */
+.section{position:relative;z-index:10;min-height:100vh;padding:140px 80px 100px}
+.section::before{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .6s}
+.section.vis-section::before{opacity:1}
+/* Noise texture — The Eye */
+#eye::before{background:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");background-size:256px 256px;opacity:0.5}
+/* Scanlines — Pipeline */
+#pipeline::before{background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,224,0.015) 3px,rgba(0,255,224,0.015) 4px);opacity:0.8}
+/* Dot grid — Show (white) */
+#show::before{background:radial-gradient(circle,rgba(192,57,43,0.08) 1px,transparent 1px);background-size:24px 24px;opacity:0.6}
+/* Grain animation — Manifesto */
+#manifesto::before{background:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.04'/%3E%3C/svg%3E");background-size:512px 512px;animation:grainShift 8s steps(10) infinite;opacity:0.6}
+@keyframes grainShift{0%{transform:translate(0)}10%{transform:translate(-5%,-5%)}20%{transform:translate(3%,3%)}30%{transform:translate(-3%,7%)}40%{transform:translate(7%,-3%)}50%{transform:translate(-7%,5%)}60%{transform:translate(5%,-7%)}70%{transform:translate(-5%,3%)}80%{transform:translate(3%,-5%)}90%{transform:translate(-3%,7%)}100%{transform:translate(0)}}
+
+.section-content{max-width:1400px;margin:0 auto}
+
+/* ══ GIANT SECTION NUMBERS ══ */
+.section-num{position:absolute;top:-40px;right:-20px;font-family:var(--hd);font-size:clamp(200px,30vw,400px);font-weight:700;line-height:1;-webkit-text-stroke:1px rgba(255,255,255,0.03);-webkit-text-fill-color:transparent;pointer-events:none;z-index:0;user-select:none;transition:opacity .8s}
+body.white-mode .section-num{-webkit-text-stroke-color:rgba(0,0,0,0.04)}
+
+/* ══ FLOATING MASK ASSETS ══ */
+.mask-asset{position:absolute;pointer-events:none;z-index:2;opacity:0.06;mix-blend-mode:screen;transition:opacity 1s}
+.mask-asset img{width:100%;height:100%;object-fit:contain;filter:invert(1)}
+body.white-mode .mask-asset{mix-blend-mode:multiply;opacity:0.04}
+body.white-mode .mask-asset img{filter:none}
+
+/* ══ HUD ══ */
+.hud{position:fixed;z-index:900;font-family:var(--mn);font-size:9px;letter-spacing:1.5px;color:var(--cyan);opacity:0.4;pointer-events:none;text-transform:uppercase;transition:color 0.6s,opacity 0.6s}
+.hud-tl{top:20px;left:24px}.hud-tr{top:20px;right:24px;text-align:right}.hud-bl{bottom:20px;left:24px}.hud-br{bottom:20px;right:24px;text-align:right}
+body.white-mode .hud{color:var(--red);opacity:0.3}
+
+/* ══ DASHBOARD SIDEBAR ══ */
+.dash-side{position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:950;display:flex;flex-direction:column;gap:2px;padding:4px;transition:all .5s}
+.dash-dot{width:3px;height:20px;background:var(--text3);transition:all .4s;border-radius:1px}
+.dash-dot.active{background:var(--accent);height:32px;box-shadow:0 0 12px var(--accent)}
+body.white-mode .dash-dot.active{background:var(--red);box-shadow:0 0 12px var(--red)}
+
+/* ══ TECH BADGES (always visible) ══ */
+.tech-badges{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:900;display:flex;gap:12px;opacity:0.3;transition:opacity .3s}
+.tech-badges:hover{opacity:0.7}
+.tech-badge{font-family:var(--mn);font-size:7px;letter-spacing:2px;text-transform:uppercase;padding:3px 10px;border:1px solid var(--border);color:var(--text3);background:rgba(0,0,0,0.5);backdrop-filter:blur(10px);transition:all .3s}
+.tech-badge:hover{border-color:var(--cyan);color:var(--cyan)}
+body.white-mode .tech-badges{opacity:0.2}
+body.white-mode .tech-badge{background:rgba(255,255,255,0.8);border-color:rgba(0,0,0,0.08)}
+body.white-mode .tech-badge:hover{border-color:var(--red);color:var(--red)}
+
+/* ══ NAV ══ */
+.nav{position:fixed;top:0;left:0;right:0;z-index:1000;padding:20px 48px;display:flex;align-items:center;justify-content:space-between;transition:all 0.5s cubic-bezier(.16,1,.3,1)}
+.nav.scrolled{padding:12px 48px;background:rgba(0,0,0,0.92);backdrop-filter:blur(30px);border-bottom:1px solid var(--border)}
+.nav-brand{font-family:var(--mn);font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;color:var(--red);transition:all 0.5s}
+.nav-links{display:flex;gap:28px}
+.nav-links a{font-family:var(--mn);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);text-decoration:none;transition:all 0.3s;position:relative;padding-bottom:4px}
+.nav-links a::after{content:'';position:absolute;bottom:0;left:0;width:0;height:1px;background:var(--accent);transition:width 0.3s,background .5s}
+.nav-links a:hover::after,.nav-links a.active::after{width:100%}
+.nav-links a:hover,.nav-links a.active{color:var(--accent)}
+.nav-section-tag{font-family:var(--mn);font-size:8px;letter-spacing:3px;text-transform:uppercase;color:var(--accent);opacity:0;transition:all .4s;position:absolute;right:48px;top:50%;transform:translateY(-50%);pointer-events:none}
+.nav.scrolled .nav-section-tag{opacity:.5}
+.nav-status{font-family:var(--mn);font-size:9px;color:var(--cyan);letter-spacing:1px;display:flex;align-items:center;gap:6px;opacity:0.6}
+.nav-status::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+/* NAV WHITE MODE */
+body.white-mode .nav.scrolled{background:rgba(255,255,255,0.95);border-color:rgba(0,0,0,0.08)}
+body.white-mode .nav-brand{color:var(--bg)}
+body.white-mode .nav-links a{color:rgba(0,0,0,0.35)}
+body.white-mode .nav-links a:hover,body.white-mode .nav-links a.active{color:var(--red)}
+body.white-mode .nav-links a::after{background:var(--red)}
+body.white-mode .nav-status{color:var(--red)}
+body.white-mode .nav-status::before{background:var(--red)}
+
+/* ══ HERO ══ */
+.hero{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-height:100vh;padding:0 40px;position:relative;z-index:10}
+.hero-pill{font-family:var(--mn);font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--cyan);border:1px solid rgba(0,255,224,0.2);padding:6px 20px;margin-bottom:40px;opacity:0;animation:fadeUp 1s .5s forwards}
+.hero-title{font-family:var(--hd);font-size:clamp(72px,12vw,160px);font-weight:700;line-height:.88;letter-spacing:-6px;opacity:0;animation:fadeUp 1s .8s forwards}
+.hero-title .outline{-webkit-text-stroke:1.5px var(--text);-webkit-text-fill-color:transparent}
+.hero-title .grad{background:linear-gradient(90deg,var(--red),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;background-size:200% 200%;animation:fadeUp 1s .8s forwards,gradShift 6s ease infinite}
+@keyframes gradShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+.hero-sub{font-family:var(--hd);font-size:clamp(18px,2.5vw,28px);font-weight:300;color:var(--text2);margin-top:24px;opacity:0;animation:fadeUp 1s 1.1s forwards}
+.hero-type{font-family:var(--mn);font-size:13px;color:var(--cyan);letter-spacing:2px;margin-top:32px;opacity:0;animation:fadeUp 1s 1.3s forwards}
+.hero-type .cursor-blink{animation:blink 1s step-end infinite}
+.hero-cta{display:flex;gap:16px;margin-top:48px;opacity:0;animation:fadeUp 1s 1.6s forwards}
+.hero-scroll{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;opacity:0;animation:fadeUp 1s 2s forwards}
+.hero-scroll span{font-family:var(--mn);font-size:8px;letter-spacing:3px;text-transform:uppercase;color:var(--text3)}
+.hero-scroll .line{width:1px;height:40px;background:var(--cyan);animation:scrollLine 2s ease-in-out infinite}
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scrollLine{0%{transform:scaleY(0);transform-origin:top}50%{transform:scaleY(1);transform-origin:top}51%{transform:scaleY(1);transform-origin:bottom}100%{transform:scaleY(0);transform-origin:bottom}}
+
+/* ══ MARQUEE BANNER ══ */
+.marquee{overflow:hidden;white-space:nowrap;padding:20px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);position:relative;z-index:10}
+.marquee-track{display:inline-flex;animation:marquee 30s linear infinite}
+.marquee-track span{font-family:var(--hd);font-size:clamp(24px,4vw,48px);font-weight:700;letter-spacing:-1px;padding:0 40px;color:var(--text3);display:inline-flex;align-items:center;gap:24px}
+.marquee-track span .dot{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0}
+@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.marquee.white{background:#fff;border-color:rgba(0,0,0,0.06)}
+.marquee.white .marquee-track span{color:rgba(0,0,0,0.12)}
+.marquee.white .marquee-track span .dot{background:var(--red)}
+/* Slim marquee variant */
+.marquee.slim{padding:10px 0}
+.marquee.slim .marquee-track span{font-size:clamp(11px,1.5vw,14px);font-family:var(--mn);font-weight:400;letter-spacing:3px;text-transform:uppercase;gap:16px;padding:0 24px}
+.marquee.slim .marquee-track span .dot{width:4px;height:4px}
+
+/* ══ EDITORIAL CARD ══ */
+.editorial{position:relative;padding:56px 64px;margin:48px 0;overflow:hidden}
+.editorial::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(77,124,255,.12) 0%,rgba(10,10,18,.95) 40%,rgba(192,57,43,.08) 100%)}
+.editorial::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--blue),transparent 30%,transparent 70%,var(--red))}
+.editorial-text{position:relative;z-index:1;font-family:var(--hd);font-size:21px;font-weight:300;font-style:italic;line-height:1.85;color:rgba(255,255,255,.82)}
+.editorial-text+.editorial-text{margin-top:24px}
+.editorial-text .hl{font-weight:600;font-style:normal;background:linear-gradient(90deg,var(--cyan),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.editorial-src{position:relative;z-index:1;font-family:var(--mn);font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--text3);margin-top:28px}
+.editorial.white{background:#fff;border:1px solid rgba(0,0,0,0.06)}
+.editorial.white::before{background:linear-gradient(135deg,rgba(77,124,255,.04) 0%,rgba(255,255,255,.98) 40%,rgba(192,57,43,.03) 100%)}
+.editorial.white .editorial-text{color:rgba(0,0,0,.7)}
+.editorial.white .editorial-src{color:rgba(0,0,0,.3)}
+
+/* ══ SECTION TYPOGRAPHY ══ */
+.s-label{font-family:var(--mn);font-size:10px;font-weight:500;letter-spacing:4px;text-transform:uppercase;color:var(--red);margin-bottom:20px}
+.s-title{font-family:var(--hd);font-size:clamp(32px,5vw,60px);font-weight:700;line-height:1.05;letter-spacing:-2px;position:relative}
+.s-title .grad{background:linear-gradient(90deg,var(--blue),var(--red));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.s-title .cyan{color:var(--cyan)}
+/* Hover reveal on titles */
+.s-title[data-reveal]{cursor:none}
+.s-title .hover-img{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60%;height:120%;object-fit:cover;opacity:0;transition:opacity .4s;pointer-events:none;z-index:-1;mix-blend-mode:screen;filter:blur(1px)}
+.s-title:hover .hover-img{opacity:0.15}
+.s-sub{font-family:var(--bd);font-size:20px;line-height:1.7;color:var(--text2);max-width:700px;margin-top:16px}
+.t-body{font-family:var(--bd);font-size:16px;line-height:1.8;color:var(--text2)}
+.t-body strong{color:var(--text);font-weight:600}
+.t-body+.t-body{margin-top:16px}
+
+/* ══ WHITE SECTION ══ */
+.section.white-section{background:#fff;color:#111}
+.section.white-section .s-label{color:var(--red)}
+.section.white-section .s-title{color:#111}
+.section.white-section .s-title .grad{background:linear-gradient(90deg,var(--red),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.section.white-section .s-sub{color:rgba(0,0,0,0.55)}
+.section.white-section .t-body{color:rgba(0,0,0,0.55)}
+.section.white-section .t-body strong{color:#111}
+.section.white-section .card{background:rgba(0,0,0,0.03);border-color:rgba(0,0,0,0.08)}
+.section.white-section .card:hover{background:rgba(192,57,43,0.04);border-color:rgba(192,57,43,0.15)}
+.section.white-section .card h3{color:#111}
+.section.white-section .card-label{color:var(--red)}
+.section.white-section .feat li{color:rgba(0,0,0,0.55);border-color:rgba(0,0,0,0.06)}
+.section.white-section .feat li::before{color:var(--red)}
+.section.white-section .raw{background:rgba(0,0,0,0.03);border-left-color:var(--red)}
+.section.white-section .raw p{color:rgba(0,0,0,0.5)}
+.section.white-section .conn{background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)}
+.section.white-section .conn-from{color:var(--blue)}
+.section.white-section .conn-to{color:var(--red)}
+.section.white-section .conn-desc{color:rgba(0,0,0,0.4)}
+.section.white-section .deep{background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)}
+.section.white-section .stat-n{color:var(--red)}
+.section.white-section .stat-l{color:rgba(0,0,0,0.35)}
+
+/* ══ PIPELINE FLOW ══ */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;margin:48px 0}
+.flow-node{background:var(--bg2);border:1px solid var(--border);padding:28px 20px;text-align:center;position:relative;transition:all .4s;cursor:none}
+.flow-node:hover{background:var(--bg3);border-color:rgba(255,255,255,0.1);transform:translateY(-4px)}
+.flow-node::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.flow-node:nth-child(1)::before{background:var(--red)}.flow-node:nth-child(2)::before{background:var(--blue)}.flow-node:nth-child(3)::before{background:var(--purple)}.flow-node:nth-child(4)::before{background:var(--cyan)}
+.flow-node:first-child{border-radius:8px 0 0 8px}.flow-node:last-child{border-radius:0 8px 8px 0}
+.flow-label{font-family:var(--mn);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+.flow-title{font-family:var(--hd);font-size:17px;font-weight:600;margin-bottom:8px}
+.flow-desc{font-family:var(--bd);font-size:12px;color:var(--text3);line-height:1.5}
+.flow-arrows{display:flex;justify-content:space-around;margin:-10px 0 -10px;position:relative;z-index:2}
+.flow-arrows span{font-family:var(--mn);font-size:20px;color:var(--cyan);animation:arrowPulse 2s ease-in-out infinite}
+@keyframes arrowPulse{0%,100%{opacity:.3;transform:translateX(0)}50%{opacity:1;transform:translateX(4px)}}
+
+/* ══ TERMINAL CODE BLOCK ══ */
+.terminal-block{background:#0a0a0f;border:1px solid rgba(0,255,224,0.1);padding:24px;margin:32px 0;font-family:var(--mn);font-size:12px;line-height:2;color:var(--text3);position:relative;overflow:hidden}
+.terminal-block::before{content:'// PIPELINE.config';position:absolute;top:8px;right:12px;font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(0,255,224,0.2)}
+.terminal-block .ln{color:rgba(255,255,255,0.15);margin-right:16px;user-select:none}
+.terminal-block .kw{color:var(--red)}.terminal-block .str{color:var(--cyan)}.terminal-block .cm{color:var(--text3);font-style:italic}
+.terminal-block .val{color:var(--blue)}
+
+/* ══ CARDS ══ */
+.card{background:var(--bg2);border:1px solid var(--border);padding:28px;position:relative;transition:all .4s cubic-bezier(.16,1,.3,1)}
+.card:hover{transform:translateY(-4px);border-color:rgba(0,255,224,0.15);box-shadow:0 20px 60px rgba(0,0,0,0.4)}
+.card-top{height:2px;position:absolute;top:0;left:0;right:0}
+.card-label{font-family:var(--mn);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.card h3{font-family:var(--hd);font-size:20px;font-weight:600;margin-bottom:12px}
+.card[data-window]{cursor:none}
+.card[data-window]::after{content:'↗';position:absolute;top:16px;right:16px;font-family:var(--mn);font-size:14px;color:var(--cyan);opacity:0;transition:opacity .3s}
+.card[data-window]:hover::after{opacity:1}
+/* GIF slot inside cards */
+.card .gif-slot{width:100%;height:120px;background:var(--bg3);border:1px solid var(--border);margin-top:16px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.card .gif-slot img,.card .gif-slot video{width:100%;height:100%;object-fit:cover}
+.card .gif-slot .placeholder{font-family:var(--mn);font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);opacity:.4}
+
+/* ══ DEEP DIVE ══ */
+.deep{background:var(--bg2);border:1px solid var(--border);padding:40px;margin:32px 0}
+.deep-label{font-family:var(--mn);font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--red);margin-bottom:20px;display:block}
+
+/* ══ FEATURES ══ */
+.feat{list-style:none;padding:0}
+.feat li{padding:12px 0 12px 24px;position:relative;font-size:15px;color:var(--text2);border-bottom:1px solid var(--border);line-height:1.65}
+.feat li::before{content:'>';position:absolute;left:0;color:var(--cyan);font-family:var(--mn);font-weight:700;font-size:13px}
+.feat li:last-child{border-bottom:none}
+
+/* ══ RAW BLOCK ══ */
+.raw{background:var(--bg3);border-left:2px solid var(--red);padding:24px 32px;margin:40px 0}
+.raw p{font-family:var(--mn);font-size:13px;line-height:2.1;color:var(--text2);font-style:italic}
+
+/* ══ STATS ══ */
+.stats{display:flex;gap:56px;margin:48px 0}
+.stat-n{font-family:var(--hd);font-size:clamp(48px,6vw,72px);font-weight:700;line-height:1;letter-spacing:-2px}
+.stat-l{font-family:var(--mn);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-top:8px}
+
+/* ══ CONNECTOR ══ */
+.conn{background:var(--bg3);border:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;gap:16px;margin:24px 0;flex-wrap:wrap}
+.conn-from{font-family:var(--mn);font-size:12px;color:var(--blue);font-weight:600}
+.conn-arrow{color:var(--text3)}
+.conn-to{font-family:var(--mn);font-size:12px;color:var(--red);font-weight:600;font-style:italic}
+.conn-desc{font-size:13px;color:var(--text3);margin-left:auto;max-width:50%}
+
+/* ══ PILLS / TAGS ══ */
+.pill{display:inline-flex;font-family:var(--mn);font-size:9px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;padding:5px 14px;border:1px solid;transition:all .3s}
+.pill:hover{transform:translateY(-2px)}
+.pill-red{color:var(--red);border-color:rgba(192,57,43,.3);background:rgba(192,57,43,.06)}
+.pill-cyan{color:var(--cyan);border-color:rgba(0,255,224,.2);background:rgba(0,255,224,.04)}
+.pill-blue{color:var(--blue);border-color:rgba(77,124,255,.3);background:rgba(77,124,255,.06)}
+.tag-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+
+/* ══ BUTTONS ══ */
+.btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--mn);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;padding:14px 28px;border:1px solid;cursor:none;text-decoration:none;transition:all .35s cubic-bezier(.16,1,.3,1);position:relative;overflow:hidden}
+.btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent,rgba(255,255,255,.1));opacity:0;transition:opacity .3s}
+.btn:hover::before{opacity:1}
+.btn-red{color:var(--red);border-color:var(--red)}.btn-red:hover{background:var(--red);color:#fff;transform:translateY(-3px) scale(1.02);box-shadow:0 16px 40px rgba(192,57,43,.35),0 0 60px rgba(192,57,43,.15)}
+.btn-white{color:var(--text2);border-color:rgba(255,255,255,.15)}.btn-white:hover{color:var(--text);border-color:var(--cyan);background:rgba(0,255,224,.05);transform:translateY(-2px);box-shadow:0 12px 32px rgba(0,255,224,.1)}
+.btn-dark{color:#111;border-color:#111}.btn-dark:hover{background:#111;color:#fff;transform:translateY(-3px) scale(1.02);box-shadow:0 16px 40px rgba(0,0,0,.25)}
+.btn-ghost{color:var(--text3);border-color:var(--border)}.btn-ghost:hover{color:var(--cyan);border-color:var(--cyan);background:rgba(0,255,224,.03)}
+.btn .ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.3);transform:scale(0);animation:ripple .6s linear}
+@keyframes ripple{to{transform:scale(4);opacity:0}}
+/* Button glow pulse on idle */
+.btn-red{animation:btnGlow 3s ease-in-out infinite}
+@keyframes btnGlow{0%,100%{box-shadow:none}50%{box-shadow:0 0 20px rgba(192,57,43,.15)}}
+
+/* ══ GRIDS ══ */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px}
+
+/* ══ FLOATING OBJECTS ══ */
+.float-obj{position:absolute;pointer-events:none;z-index:5}
+.float-1{top:15%;left:5%;width:60px;height:60px;border:1.5px solid rgba(0,255,224,0.15);border-radius:12px;animation:float1 7s ease-in-out infinite}
+.float-2{bottom:25%;right:8%;width:40px;height:40px;background:rgba(192,57,43,0.12);border-radius:50%;animation:float2 9s ease-in-out infinite}
+.float-3{top:40%;right:15%;width:80px;height:1px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);opacity:0.2;animation:float3 5s ease-in-out infinite}
+@keyframes float1{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-20px) rotate(12deg)}}
+@keyframes float2{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(20px) scale(1.15)}}
+@keyframes float3{0%,100%{transform:translateX(0);opacity:.1}50%{transform:translateX(30px);opacity:.3}}
+
+/* ══ COMMUNITY CANVAS ══ */
+#community-canvas{width:100%;height:400px;display:block;margin:40px 0}
+
+/* ══ FLOATING WINDOWS ══ */
+.fwin{position:fixed;background:rgba(5,5,5,.96);border:1px solid rgba(0,255,224,.25);min-width:340px;max-width:520px;z-index:2000;display:none;box-shadow:0 0 60px rgba(0,255,224,.08);backdrop-filter:blur(20px)}
+.fwin.active{display:block;animation:winIn .3s ease-out}
+@keyframes winIn{from{opacity:0;transform:scale(.95) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.fwin-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:rgba(0,255,224,.04);border-bottom:1px solid rgba(0,255,224,.12);cursor:grab;user-select:none}
+.fwin-bar:active{cursor:grabbing}
+.fwin-title{font-family:var(--mn);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--cyan)}
+.fwin-close{background:none;border:1px solid rgba(255,255,255,.15);color:var(--text3);width:24px;height:24px;cursor:none;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.fwin-close:hover{border-color:var(--red);color:var(--red)}
+.fwin-body{padding:24px;max-height:400px;overflow-y:auto}
+.fwin-body h3{font-family:var(--hd);font-size:20px;margin-bottom:12px}
+.fwin-body p{font-family:var(--bd);font-size:14px;line-height:1.7;color:var(--text2)}
+.fwin-body p+p{margin-top:12px}
+.fwin-body .fwin-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:16px}
+.fwin-body .fwin-stat{display:flex;gap:24px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+.fwin-body .fwin-stat div{text-align:center}
+.fwin-body .fwin-stat .fwin-stat-n{font-family:var(--hd);font-size:24px;font-weight:700;color:var(--cyan)}
+.fwin-body .fwin-stat .fwin-stat-l{font-family:var(--mn);font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-top:4px}
+
+/* ══ INFO PANEL (hover-triggered dashboard card) ══ */
+.info-panel{position:relative;display:inline-block}
+.info-panel .info-drop{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(8px);min-width:280px;background:rgba(5,5,15,.97);border:1px solid rgba(0,255,224,.15);padding:20px;opacity:0;visibility:hidden;pointer-events:none;transition:all .3s cubic-bezier(.16,1,.3,1);z-index:1500;backdrop-filter:blur(20px)}
+.info-panel:hover .info-drop{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0);pointer-events:auto}
+.info-drop::after{content:'';position:absolute;bottom:-6px;left:50%;transform:translateX(-50%) rotate(45deg);width:10px;height:10px;background:rgba(5,5,15,.97);border-right:1px solid rgba(0,255,224,.15);border-bottom:1px solid rgba(0,255,224,.15)}
+.info-drop h4{font-family:var(--hd);font-size:15px;margin-bottom:8px}
+.info-drop p{font-family:var(--bd);font-size:12px;line-height:1.6;color:var(--text2)}
+
+/* ══ SCROLL REVEAL ══ */
+.reveal{opacity:0;transform:translateY(40px);transition:all .8s cubic-bezier(.16,1,.3,1)}
+.reveal.vis{opacity:1;transform:translateY(0)}
+.reveal.d1{transition-delay:.1s}.reveal.d2{transition-delay:.2s}.reveal.d3{transition-delay:.3s}.reveal.d4{transition-delay:.4s}
+/* Scale reveal variant */
+.reveal-scale{opacity:0;transform:scale(.92);transition:all .7s cubic-bezier(.16,1,.3,1)}
+.reveal-scale.vis{opacity:1;transform:scale(1)}
+
+/* ══ DIVIDER ══ */
+.divider{height:1px;background:linear-gradient(90deg,transparent,var(--border),transparent);margin:56px 0}
+.section.white-section .divider{background:linear-gradient(90deg,transparent,rgba(0,0,0,0.08),transparent)}
+
+/* ══ WHITE INTERLUDE SECTIONS ══ */
+.interlude{position:relative;z-index:10;background:#fff;padding:100px 80px;overflow:hidden}
+.interlude .section-content{max-width:1400px;margin:0 auto}
+.interlude .s-label{color:var(--red)}
+.interlude .s-title{color:#111}
+.interlude .t-body{color:rgba(0,0,0,0.55)}
+.interlude .t-body strong{color:#111}
+.interlude .editorial{background:#fff;border:1px solid rgba(0,0,0,0.06)}
+.interlude .editorial::before{background:linear-gradient(135deg,rgba(77,124,255,.04) 0%,rgba(255,255,255,.98) 40%,rgba(192,57,43,.03) 100%)}
+.interlude .editorial .editorial-text{color:rgba(0,0,0,.7)}
+.interlude .editorial .editorial-src{color:rgba(0,0,0,.3)}
+.interlude .card{background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)}
+.interlude .card:hover{background:rgba(192,57,43,0.03);border-color:rgba(192,57,43,0.12)}
+.interlude .card h3{color:#111}
+.interlude .card-label{color:var(--red)}
+.interlude .card .t-body{color:rgba(0,0,0,0.5)}
+
+/* ══ MOVING CROSSHAIR TARGETS ══ */
+.target{position:absolute;pointer-events:none;z-index:3;opacity:0.08}
+.target::before,.target::after{content:'';position:absolute;background:var(--red)}
+.target::before{width:1px;height:40px;left:50%;top:0;transform:translateX(-50%)}
+.target::after{width:40px;height:1px;top:50%;left:0;transform:translateY(-50%)}
+.target .target-ring{width:30px;height:30px;border:1px solid var(--red);border-radius:50%;position:absolute;top:5px;left:5px}
+.target-1{animation:targetMove1 20s ease-in-out infinite}
+.target-2{animation:targetMove2 25s ease-in-out infinite}
+.target-3{animation:targetMove3 18s ease-in-out infinite}
+@keyframes targetMove1{0%,100%{transform:translate(0,0)}25%{transform:translate(100px,-60px)}50%{transform:translate(-50px,80px)}75%{transform:translate(80px,40px)}}
+@keyframes targetMove2{0%,100%{transform:translate(0,0)}33%{transform:translate(-80px,100px)}66%{transform:translate(120px,-40px)}}
+@keyframes targetMove3{0%,100%{transform:translate(0,0)}50%{transform:translate(60px,-90px)}}
+body.white-mode .target{opacity:0.05}
+body.white-mode .target::before,body.white-mode .target::after{background:#111}
+body.white-mode .target .target-ring{border-color:#111}
+.interlude .target::before,.interlude .target::after{background:rgba(0,0,0,0.15)}
+.interlude .target .target-ring{border-color:rgba(0,0,0,0.15)}
+.interlude .target{opacity:0.12}
+
+/* ══ DASHBOARD OVERLAY PANEL ══ */
+.dash-overlay{position:fixed;top:80px;right:12px;z-index:950;width:180px;display:flex;flex-direction:column;gap:8px;transition:all .5s}
+.dash-card{background:rgba(5,5,15,.85);border:1px solid var(--border);padding:10px 12px;backdrop-filter:blur(16px);transition:all .4s}
+.dash-card:hover{border-color:rgba(0,255,224,.2);background:rgba(5,5,15,.95)}
+.dash-card-label{font-family:var(--mn);font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+.dash-card-val{font-family:var(--hd);font-size:16px;font-weight:700;color:var(--cyan)}
+.dash-card-bar{height:2px;background:var(--bg3);margin-top:6px;overflow:hidden;border-radius:1px}
+.dash-card-bar div{height:100%;border-radius:1px;transition:width 1s ease-out}
+body.white-mode .dash-overlay{opacity:0.15}
+
+/* ══ FLOATING LOGO ══ */
+.float-logo{position:fixed;z-index:5;pointer-events:none;opacity:0.04;transition:opacity .8s}
+.float-logo img{width:100%;height:auto}
+body.white-mode .float-logo{opacity:0.03}
+body.white-mode .float-logo img{filter:invert(1)}
+
+/* ══ RESPONSIVE ══ */
+@media(max-width:900px){
+  html,body{cursor:auto}
+  .cur-o,.cur-i{display:none}
+  .section{padding:100px 24px 60px}.hero{padding:0 20px}
+  .g2,.g3{grid-template-columns:1fr}
+  .flow{grid-template-columns:1fr}.flow-node{border-radius:0!important}.flow-node:first-child{border-radius:8px 8px 0 0!important}.flow-node:last-child{border-radius:0 0 8px 8px!important}
+  .conn{flex-direction:column;align-items:flex-start}.conn-desc{margin-left:0;max-width:100%}
+  .stats{flex-wrap:wrap;gap:32px}.nav-links{display:none}.editorial{padding:32px 24px}.hud{display:none}
+  .float-obj,.mask-asset,.section-num,.dash-side,.tech-badges,.nav-section-tag,.dash-overlay,.float-logo,.target{display:none}
+  .interlude{padding:60px 24px}
+  .terminal-block{font-size:10px;padding:16px}
+  .info-panel .info-drop{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ LOADING SCREEN ══ -->
+<div class="loader" id="loader">
+  <div class="loader-eye"></div>
+  <div class="loader-text" id="loader-text">INITIALIZING SYSTEM_</div>
+  <div class="loader-bar"></div>
+</div>
+
+<!-- ══ CUSTOM CURSOR ══ -->
+<div class="cur-o" id="cur-o"></div>
+<div class="cur-i" id="cur-i"></div>
+
+<!-- ══ GRID BG ══ -->
+<div class="grid-bg"></div>
+
+<!-- ══ THREE.JS ══ -->
+<canvas id="three-canvas"></canvas>
+
+<!-- ══ HUD ══ -->
+<div class="hud hud-tl" id="hud-tl">X: 0000 Y: 0000</div>
+<div class="hud hud-tr" id="hud-tr">FPS: 60<br>SCROLL: 0%</div>
+<div class="hud hud-bl">SOUTH HUSTLES · CUSA · 2026</div>
+<div class="hud hud-br">STATUS: ONLINE_</div>
+
+<!-- ══ DASHBOARD SIDEBAR ══ -->
+<div class="dash-side" id="dash-side">
+  <div class="dash-dot active" data-for="hero"></div>
+  <div class="dash-dot" data-for="eye"></div>
+  <div class="dash-dot" data-for="pipeline"></div>
+  <div class="dash-dot" data-for="show"></div>
+  <div class="dash-dot" data-for="manifesto"></div>
+</div>
+
+<!-- ══ TECH BADGES ══ -->
+<div class="tech-badges">
+  <span class="tech-badge">Three.js</span>
+  <span class="tech-badge">Scope H100</span>
+  <span class="tech-badge">TouchDesigner</span>
+  <span class="tech-badge">Resolume</span>
+  <span class="tech-badge">NDI</span>
+  <span class="tech-badge">ControlNet</span>
+  <span class="tech-badge">LoRA</span>
+</div>
+
+<!-- ══ DASHBOARD OVERLAY ══ -->
+<div class="dash-overlay" id="dash-overlay">
+  <div class="dash-card">
+    <div class="dash-card-label">Scroll Progress</div>
+    <div class="dash-card-val" id="dash-scroll">0%</div>
+    <div class="dash-card-bar"><div id="dash-scroll-bar" style="width:0%;background:var(--cyan)"></div></div>
+  </div>
+  <div class="dash-card">
+    <div class="dash-card-label">Active Section</div>
+    <div class="dash-card-val" id="dash-section" style="font-size:11px;letter-spacing:1px">HOME</div>
+  </div>
+  <div class="dash-card">
+    <div class="dash-card-label">Pipeline Load</div>
+    <div class="dash-card-val" style="color:var(--red)">108<span style="font-size:10px;color:var(--text3)">GB</span></div>
+    <div class="dash-card-bar"><div style="width:87%;background:var(--red)"></div></div>
+  </div>
+  <div class="dash-card">
+    <div class="dash-card-label">Inference</div>
+    <div class="dash-card-val" style="color:var(--blue);font-size:11px">H100 REMOTE</div>
+    <div class="dash-card-bar"><div style="width:100%;background:var(--blue)"></div></div>
+  </div>
+</div>
+
+<!-- ══ FLOATING LOGO ══ -->
+<div class="float-logo" id="float-logo" style="top:30%;right:5%;width:300px">
+  <img src="assets/logo/perro-logo.png" alt="" onerror="this.parentElement.style.display='none'">
+</div>
+
+<!-- ══ NAV ══ -->
+<nav class="nav" id="nav">
+  <div class="nav-brand">PERRO ANDALUZ</div>
+  <div class="nav-links">
+    <a href="#hero" class="active" data-section="hero">Home</a>
+    <a href="#eye" data-section="eye">The Eye</a>
+    <a href="#pipeline" data-section="pipeline">Pipeline</a>
+    <a href="#show" data-section="show">The Show</a>
+    <a href="#manifesto" data-section="manifesto">Manifesto</a>
+  </div>
+  <div class="nav-section-tag" id="nav-tag">HOME</div>
+  <div class="nav-status">ONLINE_</div>
+</nav>
+
+
+<!-- ═══════════════════════════════════════
+     HERO
+     ═══════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="float-obj float-1"></div>
+  <div class="float-obj float-2"></div>
+  <div class="float-obj float-3"></div>
+  <div class="target target-2" style="top:25%;right:12%"><div class="target-ring"></div></div>
+  <div class="target target-3" style="bottom:20%;left:8%"><div class="target-ring"></div></div>
+  <div class="hero-pill">Daydream Cohort 3 · Interactive AI Video Program</div>
+  <h1 class="hero-title"><span class="outline">PERRO</span><br><span class="grad">ANDALUZ</span></h1>
+  <p class="hero-sub">Real-Time AI Visual System for <strong style="color:var(--text);font-weight:600">Live Rock</strong></p>
+  <div class="hero-type"><span id="typewriter"></span><span class="cursor-blink">_</span></div>
+  <div class="hero-cta">
+    <a href="#eye" class="btn btn-red">Enter the System ></a>
+    <a href="https://app.daydream.live/discover/create?slug=perro-andaluz-by-scopetd&creator=cusa" class="btn btn-white" target="_blank">View on Daydream ></a>
+  </div>
+  <div class="hero-scroll"><span>Scroll</span><div class="line"></div></div>
+</section>
+
+<!-- MARQUEE 1 -->
+<div class="marquee">
+  <div class="marquee-track">
+    <span><span class="dot"></span>TOUCHDESIGNER</span><span><span class="dot"></span>SCOPE H100</span><span><span class="dot"></span>RESOLUME ARENA</span><span><span class="dot"></span>NDI PROTOCOL</span><span><span class="dot"></span>108GB PROCESSED</span><span><span class="dot"></span>ZERO LOOPS</span><span><span class="dot"></span>PERRO ANDALUZ</span><span><span class="dot"></span>CÓRDOBA ARGENTINA</span>
+    <span><span class="dot"></span>TOUCHDESIGNER</span><span><span class="dot"></span>SCOPE H100</span><span><span class="dot"></span>RESOLUME ARENA</span><span><span class="dot"></span>NDI PROTOCOL</span><span><span class="dot"></span>108GB PROCESSED</span><span><span class="dot"></span>ZERO LOOPS</span><span><span class="dot"></span>PERRO ANDALUZ</span><span><span class="dot"></span>CÓRDOBA ARGENTINA</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SLIDE 1 — THE EYE
+     ═══════════════════════════════════════ -->
+<section class="section" id="eye" data-accent="cyan" data-tag="THE EYE">
+  <!-- Giant number -->
+  <div class="section-num">01</div>
+  <!-- Floating mask asset -->
+  <div class="mask-asset" style="top:10%;right:-5%;width:500px;height:500px;transform:rotate(-15deg)">
+    <img src="assets/hover-reveals/eye-iris.png" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">
+  </div>
+  <div class="section-content">
+    <div class="s-label reveal">01 — The Eye</div>
+    <h2 class="s-title reveal d1" data-reveal>Vision is not a simple act of looking.<br>It is a <span class="cyan">dialogue</span> between the eye, the mind,<br>and what is being looked at.
+      <img class="hover-img" src="assets/hover-reveals/eye.png" alt="" onerror="this.style.display='none'">
+    </h2>
+    <p class="s-sub reveal d2">The central symbol of this project is not a logo. It is an organ. A system that receives vibrations and constructs experience — like the retina constructs color from electromagnetic waves.</p>
+
+    <div class="editorial reveal d3">
+      <p class="editorial-text">"Todo comienza con la luz. Antes de que hubiera palabras, antes incluso de que hubiera dioses, el ser humano abrió los ojos y descubrió que el mundo no era gris — que estaba hecho de tonos que ardían, que se deslizaban, que <span class="hl">respiraban</span>."</p>
+      <p class="editorial-text">"El color es <span class="hl">lenguaje emocional</span>, un idioma que no necesita gramática porque se dirige directamente al cuerpo."</p>
+      <span class="editorial-src">Civilización Mental — On Color, Light & Perception</span>
+    </div>
+
+    <div class="g2 reveal" style="margin-top:48px;align-items:start">
+      <div>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:20px">Why build an eye?</h3>
+        <p class="t-body">Newton proved white light fractures into spectrum. Neuroscience proved the spectrum doesn't exist outside your skull — the retina receives electromagnetic waves and the cerebral cortex invents the color you experience.</p>
+        <p class="t-body">Our pipeline mirrors this exactly. The audio signal enters TouchDesigner as raw vibration. Scope's inference engine on H100 GPUs constructs a visual reality that never existed before that millisecond. Resolume composes it into shared experience — projected light hitting 500 pairs of eyes.</p>
+        <p class="t-body">The pipeline doesn't generate visuals. It generates <strong>perception</strong>. Every frame the audience sees was born in that exact second. It will never exist again.</p>
+        <a href="#pipeline" class="btn btn-ghost" style="margin-top:24px">See the Pipeline ></a>
+      </div>
+      <div>
+        <div class="card reveal d1" data-window="win-td" style="margin-bottom:12px">
+          <div class="card-top" style="background:var(--red)"></div>
+          <div class="card-label" style="color:var(--red)">The Retina</div>
+          <h3>TouchDesigner</h3>
+          <p class="t-body">FFT spectral analysis dissects the live audio. RMS detects dynamics. Onset detection triggers prompt sequences on every kick drum. The sensory organ of the system.</p>
+          <div class="gif-slot"><span class="placeholder">[ TD INTERFACE ]</span></div>
+        </div>
+        <div class="card reveal d2" data-window="win-scope" style="margin-bottom:12px">
+          <div class="card-top" style="background:var(--blue)"></div>
+          <div class="card-label" style="color:var(--blue)">The Cortex</div>
+          <h3>Scope · H100 Remote Inference</h3>
+          <p class="t-body">LongLive V2V pipeline. Custom LoRAs per track. The model doesn't reproduce — it constructs. Frame by frame, a new visual language.</p>
+          <div class="gif-slot"><span class="placeholder">[ SCOPE UI ]</span></div>
+        </div>
+        <div class="card reveal d3" data-window="win-resolume">
+          <div class="card-top" style="background:var(--cyan)"></div>
+          <div class="card-label" style="color:var(--cyan)">The Experience</div>
+          <h3>Resolume Arena</h3>
+          <p class="t-body">4K masks. Layer composition. Post-process. Three.js geometry as visual anchor. The moment raw inference becomes projected light.</p>
+          <div class="gif-slot"><span class="placeholder">[ RESOLUME COMP ]</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="editorial reveal" style="margin-top:48px">
+      <p class="editorial-text">"El color no es una pared que se interpone, sino un <span class="hl">puente</span>. A través de él aprendemos a reconocer nuestra fragilidad, nuestros deseos, nuestra mortalidad."</p>
+      <p class="editorial-text">"El color es fugaz, cambia con la luz, desaparece con la sombra — pero en ese instante de resplandor sentimos que <span class="hl">la vida se intensifica</span>, que el mundo nos habla directamente."</p>
+      <span class="editorial-src">The bridge between sound and image is the same bridge between light and perception.</span>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE 2 — reverse direction -->
+<div class="marquee" style="direction:rtl">
+  <div class="marquee-track" style="animation-direction:reverse">
+    <span><span class="dot"></span>NO DECORAMOS SHOWS</span><span><span class="dot"></span>LOS PROGRAMAMOS</span><span><span class="dot"></span>CADA TEMA TIENE SU PROPIA PIEL</span><span><span class="dot"></span>EL CAOS TIENE ESTRUCTURA</span><span><span class="dot"></span>LA ESTRUCTURA TIENE ALMA</span><span><span class="dot"></span>108 GIGAS SIN REPETIRSE</span>
+    <span><span class="dot"></span>NO DECORAMOS SHOWS</span><span><span class="dot"></span>LOS PROGRAMAMOS</span><span><span class="dot"></span>CADA TEMA TIENE SU PROPIA PIEL</span><span><span class="dot"></span>EL CAOS TIENE ESTRUCTURA</span><span><span class="dot"></span>LA ESTRUCTURA TIENE ALMA</span><span><span class="dot"></span>108 GIGAS SIN REPETIRSE</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     INTERLUDE — WHITE CLEAN SECTION
+     ═══════════════════════════════════════ -->
+<section class="interlude" id="interlude-1">
+  <!-- Moving targets -->
+  <div class="target target-1" style="top:20%;left:15%"><div class="target-ring"></div></div>
+  <div class="target target-2" style="top:60%;right:20%"><div class="target-ring"></div></div>
+  <div class="section-content">
+    <div class="g2 reveal" style="align-items:center;min-height:50vh">
+      <div>
+        <div class="s-label reveal">System Overview</div>
+        <h2 class="s-title reveal d1" style="color:#111;font-size:clamp(28px,4vw,48px)">The retina receives.<br>The cortex constructs.<br>The experience <span style="color:var(--red)">projects.</span></h2>
+        <p class="t-body reveal d2" style="margin-top:20px">Three organs. One nervous system. The pipeline mirrors how human vision works — from raw electromagnetic input to constructed perception. No step is automated. Every frame passes through human hands.</p>
+        <div style="display:flex;gap:12px;margin-top:28px;flex-wrap:wrap" class="reveal d3">
+          <a href="#pipeline" class="btn btn-dark">Deep Dive ></a>
+          <a href="#" class="btn" style="color:rgba(0,0,0,.4);border-color:rgba(0,0,0,.12)" onclick="openWin('win-td');return false">Open TD Panel ></a>
+        </div>
+      </div>
+      <div class="reveal d2">
+        <!-- Dashboard mini-cards in white context -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)">
+            <div class="card-label" style="color:var(--red)">Input</div>
+            <h3 style="color:#111;font-size:16px">Live Audio</h3>
+            <p style="font-family:var(--mn);font-size:24px;font-weight:700;color:var(--red);margin-top:8px">4ch</p>
+          </div>
+          <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)">
+            <div class="card-label" style="color:var(--blue)">Analysis</div>
+            <h3 style="color:#111;font-size:16px">FFT Bands</h3>
+            <p style="font-family:var(--mn);font-size:24px;font-weight:700;color:var(--blue);margin-top:8px">6</p>
+          </div>
+          <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)">
+            <div class="card-label" style="color:var(--purple)">Generation</div>
+            <h3 style="color:#111;font-size:16px">Inference</h3>
+            <p style="font-family:var(--mn);font-size:24px;font-weight:700;color:var(--purple);margin-top:8px">H100</p>
+          </div>
+          <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06)">
+            <div class="card-label" style="color:var(--cyan)">Output</div>
+            <h3 style="color:#111;font-size:16px">Resolution</h3>
+            <p style="font-family:var(--mn);font-size:24px;font-weight:700;color:var(--cyan);margin-top:8px">4K</p>
+          </div>
+        </div>
+        <div style="margin-top:16px;padding:16px;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.06)">
+          <div style="font-family:var(--mn);font-size:8px;letter-spacing:2px;text-transform:uppercase;color:rgba(0,0,0,0.3);margin-bottom:8px">Pipeline Status</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:6px;height:6px;border-radius:50%;background:var(--red);animation:blink 2s infinite"></div>
+            <span style="font-family:var(--mn);font-size:11px;color:rgba(0,0,0,0.5)">LIVE — Córdoba, Argentina</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════
+     SLIDE 2 — THE PIPELINE
+     ═══════════════════════════════════════ -->
+<section class="section" id="pipeline" data-accent="blue" data-tag="PIPELINE">
+  <div class="section-num">02</div>
+  <!-- Moving targets -->
+  <div class="target target-1" style="top:10%;right:10%"><div class="target-ring"></div></div>
+  <div class="target target-3" style="bottom:15%;left:5%"><div class="target-ring"></div></div>
+  <div class="mask-asset" style="bottom:5%;left:-8%;width:600px;height:300px;transform:rotate(8deg)">
+    <img src="assets/hover-reveals/oval-open.png" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">
+  </div>
+  <div class="section-content">
+    <div class="s-label reveal">02 — The Pipeline</div>
+    <h2 class="s-title reveal d1" data-reveal>The Anatomy of<br><span class="grad">Real-Time Hallucination</span>
+      <img class="hover-img" src="assets/hover-reveals/pipeline.png" alt="" onerror="this.style.display='none'">
+    </h2>
+    <p class="s-sub reveal d2">The audio signal enters. The system listens, dissects, transforms, composes. No loops. No templates. The output is alive because the input is alive.</p>
+
+    <div class="editorial reveal">
+      <p class="editorial-text">"Artistas como James Turrell dejaron de pintar con pigmentos para <span class="hl">trabajar directamente con la luz</span>, sumergiéndonos en atmósferas que transforman la percepción."</p>
+      <span class="editorial-src">From Turrell's light rooms to H100 inference — working directly with the raw material</span>
+    </div>
+
+    <div class="flow reveal">
+      <div class="flow-node" data-window="win-audio"><div class="flow-label" style="color:var(--red)">01 · Input</div><div class="flow-title">Audio Signal</div><div class="flow-desc">Live feed — guitar, drums, bass, voice. Unprocessed. The raw material driving every pixel.</div></div>
+      <div class="flow-node" data-window="win-td"><div class="flow-label" style="color:var(--blue)">02 · Analysis</div><div class="flow-title">TouchDesigner</div><div class="flow-desc">FFT by band. RMS dynamics. Onset on kick. Prompt sequencing "por tirada" — 100+ terms. Output via NDI.</div></div>
+      <div class="flow-node" data-window="win-scope"><div class="flow-label" style="color:var(--purple)">03 · Generation</div><div class="flow-title">Scope · H100</div><div class="flow-desc">Remote Inference. LongLive V2V. Custom LoRAs per track. Denoise + structure live via UI sliders.</div></div>
+      <div class="flow-node" data-window="win-resolume"><div class="flow-label" style="color:var(--cyan)">04 · Output</div><div class="flow-title">Resolume Arena</div><div class="flow-desc">4K masks. Color grade. Three.js anchors. Composition per scene. LED / projector / OBS.</div></div>
+    </div>
+    <div class="flow-arrows reveal"><span>></span><span>></span><span>></span></div>
+
+    <!-- Terminal code block -->
+    <div class="terminal-block reveal">
+      <div><span class="ln">01</span><span class="kw">input</span>: <span class="str">"live_audio"</span> <span class="cm">// guitar + drums + bass + voice</span></div>
+      <div><span class="ln">02</span><span class="kw">analysis</span>: <span class="val">TouchDesigner</span> { fft: <span class="str">"by_band"</span>, onset: <span class="str">"kick"</span>, rms: <span class="val">true</span> }</div>
+      <div><span class="ln">03</span><span class="kw">prompts</span>: <span class="val">100+</span> terms, sequenced <span class="str">"por_tirada"</span> <span class="cm">// per song section</span></div>
+      <div><span class="ln">04</span><span class="kw">transport</span>: <span class="val">NDI</span> <span class="cm">// zero capture cards, pure network</span></div>
+      <div><span class="ln">05</span><span class="kw">inference</span>: <span class="val">Scope.H100</span> { model: <span class="str">"LongLive_V2V"</span>, lora: <span class="str">"perro_andaluz_v3"</span> }</div>
+      <div><span class="ln">06</span><span class="kw">control</span>: { denoise: <span class="val">slider</span>, structure: <span class="val">slider</span>, canny: <span class="val">slider</span>, depth: <span class="val">slider</span> }</div>
+      <div><span class="ln">07</span><span class="kw">output</span>: <span class="val">Resolume</span> { scenes: <span class="val">23</span>, masks: <span class="str">"4000x2000"</span>, target: <span class="str">"LED+projector"</span> }</div>
+      <div><span class="ln">08</span><span class="kw">result</span>: <span class="val">108GB</span> <span class="cm">// zero repeated frames. zero loops. pure instinct.</span></div>
+    </div>
+
+    <div class="g2 reveal" style="margin-top:40px;align-items:start">
+      <div>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:20px">The system is an instrument</h3>
+        <p class="t-body">There's a phrase from my father: <em>"If you have ten hours to cut down a tree, spend nine sharpening the axe."</em> We invested weeks crafting 18 structured prompts, training LoRAs, designing 4K masks, hand-coding Three.js geometry — before the first live frame was generated.</p>
+        <p class="t-body">Moving UI sliders during a live show is performing an instrument. You shift denoise strength and the hallucination breathes differently. ControlNet — Canny reads the geometry of bodies on stage, Depth maps force the algorithm to respect physical space.</p>
+        <p class="t-body">The 12-frame latency becomes a musical breath. The system doesn't react instantly — it inhales with the band and exhales light.</p>
+        <ul class="feat" style="margin-top:24px">
+          <li>Audio-reactive prompt sequencing — the kick drum is the trigger</li>
+          <li>100+ term prompt table organized "por tirada" per song section</li>
+          <li>NDI protocol — pure network, zero capture cards</li>
+          <li><span class="info-panel">ControlNet<span class="info-drop"><h4>ControlNet</h4><p>Canny edge detection reads silhouettes. Depth maps force the AI to respect 3D space. Together they prevent the hallucination from overriding human geometry on stage.</p></span></span>: Canny + Depth preserving human geometry</li>
+          <li><span class="info-panel">Custom LoRAs<span class="info-drop"><h4>LoRA Training</h4><p>Low-Rank Adaptation models trained specifically on Perro Andaluz's aesthetic. The AI speaks the band's visual language — underground grit, identidad de barro.</p></span></span> — the AI speaks Perro Andaluz</li>
+          <li>Three.js Iris + lateral fluid ovals as geometric anchors</li>
+        </ul>
+      </div>
+      <div>
+        <div class="deep">
+          <span class="deep-label">Technical Architecture</span>
+          <p class="t-body">TouchDesigner configured as a sensory organ. Sub-bass drives fluid simulations, mid-range modulates prompt intensity, high-frequency triggers particle density. The FFT feeds a dynamic prompt sequencer indexing 100+ visual descriptors.</p>
+          <p class="t-body">Signal pushes via NDI to Scope on H100 clusters running LongLive. The interface: denoise strength, adherence weight, ControlNet influence, LoRA blend — all manipulated live by hand. No automation. Human touch driving cloud inference.</p>
+          <p class="t-body">Resolume composites with 23 handcrafted scenes. Each carries its own mask topology — 4000x2000px PSDs preventing the latent space from overwhelming the band's image. Three.js provides structure: central Iris flanked by lateral ovals that transform with the feed.</p>
+        </div>
+        <div class="stats">
+          <div><div class="stat-n counter" data-target="108" style="color:var(--red)">0<span style="font-size:32px">GB</span></div><div class="stat-l">Processed</div></div>
+          <div><div class="stat-n counter" data-target="0" style="color:var(--cyan)">0</div><div class="stat-l">Repeated frames</div></div>
+          <div><div class="stat-n counter" data-target="23" style="color:var(--blue)">0</div><div class="stat-l">Live scenes</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="raw reveal"><p>el lienzo no es una pantalla blanca, es el audio crudo mordiendo el cable. haciendo real-time parameter shift al milisegundo. tocas la viola y el sistema sangra pixeles. 108 gigas procesados end-to-end y ni un frame se repite.</p></div>
+  </div>
+</section>
+
+<!-- MARQUEE 3 — slim technical -->
+<div class="marquee slim">
+  <div class="marquee-track" style="animation-duration:45s">
+    <span><span class="dot"></span>FFT SPECTRAL ANALYSIS</span><span><span class="dot"></span>RMS DYNAMICS</span><span><span class="dot"></span>ONSET DETECTION</span><span><span class="dot"></span>PROMPT SEQUENCING POR TIRADA</span><span><span class="dot"></span>H100 TENSOR CORES</span><span><span class="dot"></span>LONGLIVE V2V</span><span><span class="dot"></span>CANNY EDGE</span><span><span class="dot"></span>DEPTH MAP</span><span><span class="dot"></span>CUSTOM LORA</span><span><span class="dot"></span>4000x2000 MASKS</span><span><span class="dot"></span>NDI PROTOCOL</span><span><span class="dot"></span>ZERO LATENCY CAPTURE</span>
+    <span><span class="dot"></span>FFT SPECTRAL ANALYSIS</span><span><span class="dot"></span>RMS DYNAMICS</span><span><span class="dot"></span>ONSET DETECTION</span><span><span class="dot"></span>PROMPT SEQUENCING POR TIRADA</span><span><span class="dot"></span>H100 TENSOR CORES</span><span><span class="dot"></span>LONGLIVE V2V</span><span><span class="dot"></span>CANNY EDGE</span><span><span class="dot"></span>DEPTH MAP</span><span><span class="dot"></span>CUSTOM LORA</span><span><span class="dot"></span>4000x2000 MASKS</span><span><span class="dot"></span>NDI PROTOCOL</span><span><span class="dot"></span>ZERO LATENCY CAPTURE</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SLIDE 3 — THE SHOW (WHITE MODE)
+     ═══════════════════════════════════════ -->
+<section class="section white-section" id="show" data-theme="white" data-accent="red" data-tag="THE SHOW">
+  <div class="section-num">03</div>
+  <div class="mask-asset" style="top:5%;left:50%;transform:translateX(-50%);width:800px;height:300px;opacity:0.03">
+    <img src="assets/hover-reveals/oval-globe.png" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">
+  </div>
+  <div class="section-content">
+    <div class="s-label reveal">03 — The Show</div>
+    <h2 class="s-title reveal d1" data-reveal>Each Track Has Its Own <span class="grad">Skin</span>
+      <img class="hover-img" src="assets/hover-reveals/show.png" alt="" onerror="this.style.display='none'">
+    </h2>
+    <p class="s-sub reveal d2">Perro Andaluz — 15 years of experimental rock from Córdoba, Argentina. The sound always demanded a body. Now we gave it a nervous system.</p>
+
+    <div class="editorial white reveal">
+      <p class="editorial-text">"El rojo acelera el pulso, el azul calma la respiración, el amarillo despierta la mente. Jung los veía como <span class="hl">arquetipos</span> — símbolos primordiales que emergen del inconsciente colectivo."</p>
+      <p class="editorial-text">"Kandinski escribió que el color es la tecla, el ojo es el martillo, y el alma un <span class="hl">piano de cuerdas infinitas</span>."</p>
+      <span class="editorial-src">Every track is a different archetype. Every song, a different key on the infinite piano.</span>
+    </div>
+
+    <div class="g2 reveal" style="margin-top:48px;align-items:start">
+      <div>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:20px">Córdoba: The Interior</h3>
+        <p class="t-body">While the coasts look outward, the center of Argentina looks inward. 15 years distilling a sound that needed its visual equivalent. Artistic direction by <strong>Paulina Olivero</strong> — co-director of Relatos Salvajes. "Treat every kick drum like a jump cut. Treat every song like a scene."</p>
+        <p class="t-body">The system was born in Patagonia (Cohort 2 — processing nature from a solar-powered motorhome) and evolved into the electric chaos of a live rock stage. Same pipeline, different input. That portability is the proof.</p>
+        <div class="conn" style="margin-top:24px">
+          <span class="conn-from">Cohort 2: Patagonia</span><span class="conn-arrow">></span><span class="conn-to">Cohort 3: Rock Stage</span>
+          <span class="conn-desc">First we textured the mountains. Then we textured the distortion.</span>
+        </div>
+        <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+          <a href="#" class="btn btn-dark" onclick="openWin('win-evolution');return false">Cohort Evolution ></a>
+          <a href="#" class="btn btn-dark" onclick="openWin('win-paulina');return false">Paulina Olivero ></a>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:20px">Visual identity per track</h3>
+        <div class="card reveal d1" data-window="win-track1" style="margin-bottom:12px"><div class="card-top" style="background:var(--red)"></div><div class="card-label" style="color:var(--red)">Heavy Distortion</div><h3>Aggressive Pulse</h3><p class="t-body">Red palette. Maximum prompt rate. Every kick triggers full frame mutation. LoRA trained on underground grit — identidad de barro.</p></div>
+        <div class="card reveal d2" data-window="win-track2" style="margin-bottom:12px"><div class="card-top" style="background:var(--blue)"></div><div class="card-label" style="color:var(--blue)">Atmospheric</div><h3>Sustained Hallucination</h3><p class="t-body">Blue-to-purple gradient. Slower denoise decay. Guitar sustain stretches the visual — the hallucination lingers as long as the note resonates.</p></div>
+        <div class="card reveal d3" data-window="win-track3" style="margin-bottom:12px"><div class="card-top" style="background:var(--purple)"></div><div class="card-label" style="color:var(--purple)">Cinematic</div><h3>Scene Tension</h3><p class="t-body">Deep blacks, cyan accents. Paulina's direction — every silence is a long take, every explosion is a cut. ControlNet locks the singer's silhouette.</p></div>
+        <div class="card reveal d4" data-window="win-track4"><div class="card-top" style="background:var(--cyan)"></div><div class="card-label" style="color:var(--cyan)">Natural Fluids</div><h3>Winamp Memory</h3><p class="t-body">Remember staring at Winamp as a kid? TD fluid simulations are the purest audio-to-image truth. We rebuilt that purity on cloud GPUs.</p></div>
+      </div>
+    </div>
+
+    <div class="raw reveal"><p>te acordás mirando el crt de pendejo re hipnotizado con el winamp? construimos exactamente ese state of mind pero con un tech stack brutal. music played with our bare eyes.</p></div>
+  </div>
+</section>
+
+<!-- WHITE MARQUEE -->
+<div class="marquee white">
+  <div class="marquee-track">
+    <span><span class="dot"></span>DONDE EL SONIDO TOCA LA MATERIA</span><span><span class="dot"></span>WHERE NATURE AND TECHNOLOGY COLLIDE</span><span><span class="dot"></span>CODING MY OWN REALITY AS AN INPUT</span><span><span class="dot"></span>VISUALS THAT NEVER REPEAT</span>
+    <span><span class="dot"></span>DONDE EL SONIDO TOCA LA MATERIA</span><span><span class="dot"></span>WHERE NATURE AND TECHNOLOGY COLLIDE</span><span><span class="dot"></span>CODING MY OWN REALITY AS AN INPUT</span><span><span class="dot"></span>VISUALS THAT NEVER REPEAT</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     INTERLUDE 2 — THE BUILDER (WHITE)
+     ═══════════════════════════════════════ -->
+<section class="interlude" id="interlude-2">
+  <div class="target target-1" style="top:30%;right:8%"><div class="target-ring"></div></div>
+  <div class="target target-2" style="bottom:10%;left:12%"><div class="target-ring"></div></div>
+  <div class="section-content">
+    <div class="reveal" style="text-align:center;max-width:800px;margin:0 auto;padding:40px 0">
+      <div class="s-label" style="text-align:center">South Hustles × CUSA</div>
+      <h2 class="s-title reveal d1" style="color:#111;font-size:clamp(28px,4vw,52px);text-align:center">Built by hand.<br>Performed by hand.<br><span style="color:var(--red)">Projected as light.</span></h2>
+      <p class="t-body reveal d2" style="margin-top:24px;max-width:600px;margin-left:auto;margin-right:auto;text-align:center">Franco Altavista. Córdoba, Argentina. The same hands that code the Three.js, train the LoRAs, and design the masks are the hands on the sliders during the live show. No delegation. Pure tracción a sangre.</p>
+    </div>
+
+    <div class="g3 reveal d3" style="margin-top:40px">
+      <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06);text-align:center;padding:32px 20px">
+        <div style="font-family:var(--mn);font-size:48px;font-weight:700;color:var(--red);line-height:1">C2</div>
+        <h3 style="color:#111;font-size:16px;margin-top:12px">Patagonia</h3>
+        <p class="t-body" style="font-size:13px;margin-top:8px">Solar-powered motorhome. Nature as input. The system's first breath under open sky.</p>
+      </div>
+      <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06);text-align:center;padding:32px 20px">
+        <div style="font-family:var(--mn);font-size:48px;font-weight:700;color:var(--blue);line-height:1">C3</div>
+        <h3 style="color:#111;font-size:16px;margin-top:12px">Rock Stage</h3>
+        <p class="t-body" style="font-size:13px;margin-top:8px">Live band. 108GB. Same pipeline, different reality. The proof of portability.</p>
+      </div>
+      <div class="card" style="background:rgba(0,0,0,0.02);border-color:rgba(0,0,0,0.06);text-align:center;padding:32px 20px">
+        <div style="font-family:var(--mn);font-size:48px;font-weight:700;color:var(--cyan);line-height:1">WEB</div>
+        <h3 style="color:#111;font-size:16px;margin-top:12px">Three.js</h3>
+        <p class="t-body" style="font-size:13px;margin-top:8px">Hand-coded Iris, lateral ovals, particle systems. The stage translated to browser.</p>
+      </div>
+    </div>
+
+    <div class="editorial reveal" style="margin-top:48px">
+      <p class="editorial-text">"Cada vez que desaparece un lenguaje, <span class="hl">desaparecen cientos de colores</span> que solo esa cultura podía nombrar. El color no es universal — es tan local como el acento, tan íntimo como la piel."</p>
+      <span class="editorial-src">From global infrastructure to local identity — del interior profundo al latent space</span>
+    </div>
+  </div>
+</section>
+
+<!-- MARQUEE before manifesto -->
+<div class="marquee slim" style="direction:rtl">
+  <div class="marquee-track" style="animation-direction:reverse;animation-duration:40s">
+    <span><span class="dot"></span>SOUTH HUSTLES</span><span><span class="dot"></span>CUSA</span><span><span class="dot"></span>CÓRDOBA ARGENTINA</span><span><span class="dot"></span>DAYDREAM COHORT 3</span><span><span class="dot"></span>PERRO ANDALUZ</span><span><span class="dot"></span>PAULINA OLIVERO</span><span><span class="dot"></span>15 YEARS</span><span><span class="dot"></span>108GB ZERO LOOPS</span>
+    <span><span class="dot"></span>SOUTH HUSTLES</span><span><span class="dot"></span>CUSA</span><span><span class="dot"></span>CÓRDOBA ARGENTINA</span><span><span class="dot"></span>DAYDREAM COHORT 3</span><span><span class="dot"></span>PERRO ANDALUZ</span><span><span class="dot"></span>PAULINA OLIVERO</span><span><span class="dot"></span>15 YEARS</span><span><span class="dot"></span>108GB ZERO LOOPS</span>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SLIDE 4 — MANIFESTO
+     ═══════════════════════════════════════ -->
+<section class="section" id="manifesto" data-accent="red" data-tag="MANIFESTO">
+  <div class="section-num">04</div>
+  <div class="target target-1" style="top:15%;left:10%"><div class="target-ring"></div></div>
+  <div class="target target-2" style="bottom:30%;right:15%"><div class="target-ring"></div></div>
+  <div class="mask-asset" style="top:20%;right:0;width:400px;height:400px;transform:rotate(5deg)">
+    <img src="assets/hover-reveals/eye-mask.png" alt="" loading="lazy" onerror="this.parentElement.style.display='none'">
+  </div>
+  <div class="section-content">
+    <div class="s-label reveal">04 — The Manifesto</div>
+    <h2 class="s-title reveal d1" data-reveal>Don't Decorate the Stage.<br><span class="grad">Program the Organism.</span>
+      <img class="hover-img" src="assets/hover-reveals/manifesto.png" alt="" onerror="this.style.display='none'">
+    </h2>
+    <p class="s-sub reveal d2">A static video loop is an insult to live music. This system was built to kill the loop — every frame as unrepeatable as the moment it was born in.</p>
+
+    <div class="editorial reveal">
+      <p class="editorial-text">"Rothko llenó salas enteras de campos de color que no se miran — <span class="hl">se habitan</span>. Un rojo profundo podía hacerte llorar sin que supieras por qué."</p>
+      <p class="editorial-text">"El color es la voz más antigua y más íntima del universo — <span class="hl">el alma secreta del mundo</span>."</p>
+      <span class="editorial-src">The secret soul of the world — Manifesto</span>
+    </div>
+
+    <div class="g2 reveal" style="margin-top:48px;align-items:start">
+      <div>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:20px">The shift</h3>
+        <p class="t-body">99% of live concert visuals are dead on arrival. Pre-rendered stock. Loops repeating every night. VJs mixing clips without listening. The show sounds live. The visuals don't.</p>
+        <p class="t-body">We eliminated the local GPU. Scope's Remote Inference on H100 clusters — the same infrastructure that trains foundation models, not a gaming laptop backstage. Processing power in the cloud. Creative control in the hands.</p>
+        <p class="t-body">The web experience mirrors the stage. Three.js Iris focuses attention. Lateral ovals shift between organic and electric. The architecture breathes in sync — the 12-frame gap is not a limitation, it's a rhythmic feature.</p>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin:32px 0 20px">What we built</h3>
+        <ul class="feat">
+          <li>TD > NDI > Scope H100 > Resolume > LED/Projector</li>
+          <li>18 manually crafted prompt structures — creative direction as code</li>
+          <li>Custom LoRAs per track — the model speaks the band's language</li>
+          <li>4000x2000px layered masks — handcrafted precision</li>
+          <li>Three.js Iris + lateral fluid geometry</li>
+          <li>ControlNet: Canny + Depth preserving silhouettes</li>
+          <li>Motion capture — style transfer from real movement</li>
+          <li>108GB — zero loops, zero repeated frames</li>
+        </ul>
+      </div>
+      <div>
+        <h3 style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:20px">What it proves</h3>
+        <ul class="feat">
+          <li>Live visuals fully generated in real-time — no pre-rendered content</li>
+          <li>Same pipeline works across radically different inputs</li>
+          <li>UI slider control is a performance instrument</li>
+          <li>Cloud inference eliminates local GPU on stage</li>
+          <li>Handcrafted direction prevents generic output</li>
+          <li>12-frame latency is a rhythmic feature, not a bug</li>
+        </ul>
+        <div class="deep" style="margin-top:32px">
+          <span class="deep-label">The bet</span>
+          <p class="t-body">If the audio signal is rich enough and the creative direction precise enough, cloud inference produces visuals more alive than any library. Not because the AI is smarter than a VJ — but because the VJ is inside the loop, hands on sliders, performing the system while the band plays.</p>
+          <p class="t-body">The human touch is amplified across H100 tensor cores. Every slider movement propagates through inference and returns as light. The audience doesn't know what's generated and what's real. That's the point.</p>
+        </div>
+        <div class="stats" style="margin-top:32px">
+          <div><div class="stat-n counter" data-target="18" style="color:var(--red)">0</div><div class="stat-l">Prompts crafted</div></div>
+          <div><div class="stat-n counter" data-target="15" style="color:var(--cyan)">0</div><div class="stat-l">Years of rock</div></div>
+          <div><div class="stat-n counter" data-target="4000" style="color:var(--blue)">0</div><div class="stat-l">px mask width</div></div>
+        </div>
+        <div style="margin-top:32px;display:flex;gap:16px;flex-wrap:wrap">
+          <a href="https://app.daydream.live/discover/create?slug=perro-andaluz-by-scopetd&creator=cusa" class="btn btn-red" target="_blank">View on Daydream ></a>
+          <a href="#hero" class="btn btn-white">Back to Top ></a>
+        </div>
+      </div>
+    </div>
+
+    <div class="raw reveal"><p>cortemos con la gilada del video mp4 en loop atrás del cantante. no decoramos más, programamos. el input es el show de rock entero. the output is pure handcrafted hallucination.</p></div>
+
+    <!-- COMMUNITY -->
+    <div class="divider"></div>
+    <h3 class="reveal" style="font-family:var(--hd);font-size:24px;font-weight:600;margin-bottom:8px">Community</h3>
+    <p class="t-body reveal" style="margin-bottom:0">Daydream Cohort 3 — the people who build in public.</p>
+    <canvas id="community-canvas"></canvas>
+
+    <div class="g2 reveal" style="align-items:start;margin-top:24px">
+      <div>
+        <p class="t-body"><strong>Franco Altavista</strong> — South Hustles / CUSA · Pipeline, Creative Direction, Web</p>
+        <p class="t-body"><strong>Paulina Olivero</strong> — Artistic Direction · Co-director Relatos Salvajes</p>
+        <p class="t-body"><strong>Perro Andaluz</strong> — 15 years of rock, Córdoba, Argentina</p>
+      </div>
+      <div>
+        <div class="tag-row">
+          <span class="pill pill-red">Scope</span>
+          <span class="pill pill-blue">TouchDesigner</span>
+          <span class="pill pill-cyan">Resolume</span>
+          <span class="pill" style="color:var(--purple);border-color:rgba(124,77,255,.3);background:rgba(124,77,255,.06)">Three.js</span>
+          <span class="pill" style="color:var(--orange);border-color:rgba(255,107,53,.3);background:rgba(255,107,53,.06)">NDI</span>
+          <span class="pill pill-red">ControlNet</span>
+          <span class="pill pill-blue">LoRA</span>
+          <span class="pill pill-cyan">LongLive</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════
+     FLOATING WINDOWS (expanded set)
+     ═══════════════════════════════════════ -->
+<!-- TD -->
+<div class="fwin" id="win-td">
+  <div class="fwin-bar" data-drag="win-td"><span class="fwin-title">// TouchDesigner</span><button class="fwin-close" data-close="win-td">×</button></div>
+  <div class="fwin-body">
+    <h3>TouchDesigner — The Retina</h3>
+    <p>FFT spectral analysis dissects the live audio into frequency bands. Sub-bass (20-80Hz) drives fluid simulations. Mid-range (200-2kHz) modulates prompt selection intensity. High-frequency content (4kHz+) triggers particle density changes.</p>
+    <p>Every kick drum onset acts as a trigger for prompt sequencing "por tirada" — indexed against a curated table of 100+ visual descriptors. The signal pushes via NDI (Network Device Interface) — zero capture cards, pure network delivery at minimal latency.</p>
+    <p>TouchDesigner doesn't just "listen" to the audio. It dissects it. The result is structured data that drives every downstream decision in the pipeline.</p>
+    <div class="fwin-tags"><span class="pill pill-red">FFT</span><span class="pill pill-blue">RMS</span><span class="pill pill-cyan">NDI</span><span class="pill pill-red">Onset</span></div>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n">6</div><div class="fwin-stat-l">Freq bands</div></div>
+      <div><div class="fwin-stat-n">100+</div><div class="fwin-stat-l">Prompt terms</div></div>
+      <div><div class="fwin-stat-n">&lt;5ms</div><div class="fwin-stat-l">NDI latency</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Scope -->
+<div class="fwin" id="win-scope">
+  <div class="fwin-bar" data-drag="win-scope"><span class="fwin-title">// Scope · H100</span><button class="fwin-close" data-close="win-scope">×</button></div>
+  <div class="fwin-body">
+    <h3>Scope — Remote Inference</h3>
+    <p>Scope Desktop connects to H100 GPU clusters running LongLive / StreamDiffusion V2 pipelines. Video-to-video transformation happens in real-time — no local NVIDIA GPU needed on stage.</p>
+    <p>The critical interface is the UI: denoise strength controls how much the model "hallucinates" vs respects the input. Structural weight controls ControlNet adherence. LoRA blend ratios shift the aesthetic per track. All manipulated live by hand during performance.</p>
+    <p>Custom LoRAs trained specifically for Perro Andaluz ensure the output doesn't look like generic AI art. It looks like the band's visual language — trained on their grit, their aesthetic, their underground identity.</p>
+    <div class="fwin-tags"><span class="pill pill-blue">H100</span><span class="pill pill-cyan">LongLive</span><span class="pill pill-red">LoRA</span></div>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n">H100</div><div class="fwin-stat-l">GPU cluster</div></div>
+      <div><div class="fwin-stat-n">12</div><div class="fwin-stat-l">Frame latency</div></div>
+      <div><div class="fwin-stat-n">3</div><div class="fwin-stat-l">Custom LoRAs</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Resolume -->
+<div class="fwin" id="win-resolume">
+  <div class="fwin-bar" data-drag="win-resolume"><span class="fwin-title">// Resolume Arena</span><button class="fwin-close" data-close="win-resolume">×</button></div>
+  <div class="fwin-body">
+    <h3>Resolume — Composition</h3>
+    <p>Resolume Arena receives the generated video stream and composites it with 23 handcrafted scenes. Each scene carries its own mask topology — 4000x2000px layered PSDs designed to prevent the latent space from overwhelming the band's real image.</p>
+    <p>Post-processing includes color grading per scene, blur and blend modes, and real-time mix between the AI-generated feed and natural TouchDesigner fluid simulations.</p>
+    <p>The Three.js framework provides geometric structure on the web side: a central hand-coded Iris flanked by two lateral conical ovals (OVALADOS) that physically transform alongside the video feed.</p>
+    <div class="fwin-tags"><span class="pill pill-cyan">4K Masks</span><span class="pill pill-blue">23 Scenes</span><span class="pill pill-red">Three.js</span></div>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n">23</div><div class="fwin-stat-l">Scenes</div></div>
+      <div><div class="fwin-stat-n">4K</div><div class="fwin-stat-l">Mask res</div></div>
+      <div><div class="fwin-stat-n">3</div><div class="fwin-stat-l">Output targets</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Audio Signal -->
+<div class="fwin" id="win-audio">
+  <div class="fwin-bar" data-drag="win-audio"><span class="fwin-title">// Audio Signal</span><button class="fwin-close" data-close="win-audio">×</button></div>
+  <div class="fwin-body">
+    <h3>The Raw Input</h3>
+    <p>Guitar, drums, bass, voice — four instruments creating uncompressed live audio. No backing tracks. No click track. Pure analog signal hitting the digital pipeline in real-time.</p>
+    <p>The unpredictability is the feature. A drummer rushing the tempo means the visuals accelerate. A sustained guitar note means the hallucination lingers. The system doesn't follow a timeline — it follows the band.</p>
+    <div class="fwin-tags"><span class="pill pill-red">Live Audio</span><span class="pill pill-blue">Analog Input</span></div>
+  </div>
+</div>
+
+<!-- Evolution -->
+<div class="fwin" id="win-evolution">
+  <div class="fwin-bar" data-drag="win-evolution"><span class="fwin-title">// Cohort Evolution</span><button class="fwin-close" data-close="win-evolution">×</button></div>
+  <div class="fwin-body">
+    <h3>Patagonia → Rock Stage</h3>
+    <p>Daydream Cohort 2: NOMAD Dreamscapes. A solar-powered motorhome traversing Patagonia. The input was nature — lakes, mountains, glaciers. The system processed landscapes into generative textures from inside a moving vehicle.</p>
+    <p>Cohort 3: Perro Andaluz. Same TouchDesigner → Scope → Resolume pipeline. But now the input is a kinetic live rock band. The slider configurations transferred — but the intensity multiplied by ten. Proof that the architecture is input-agnostic.</p>
+    <div class="fwin-tags"><span class="pill pill-cyan">C2: Nature</span><span class="pill pill-red">C3: Rock</span></div>
+  </div>
+</div>
+
+<!-- Paulina -->
+<div class="fwin" id="win-paulina">
+  <div class="fwin-bar" data-drag="win-paulina"><span class="fwin-title">// Paulina Olivero</span><button class="fwin-close" data-close="win-paulina">×</button></div>
+  <div class="fwin-body">
+    <h3>Artistic Direction</h3>
+    <p>Co-director of "Relatos Salvajes" and "Mi vecino de al lado." Paulina parameterized cinematic vision into the UI. Every track acts as a scene — guided by carefully handcrafted prompt sequencing "por tiradas."</p>
+    <p>"Treat every kick drum like a jump cut. Treat every song like a scene." Her filmic approach structures the chaos of real-time generation into intentional narrative arcs.</p>
+    <div class="fwin-tags"><span class="pill pill-red">Cinema</span><span class="pill pill-blue">Direction</span></div>
+  </div>
+</div>
+
+<!-- Track windows -->
+<div class="fwin" id="win-track1">
+  <div class="fwin-bar" data-drag="win-track1"><span class="fwin-title">// Heavy Distortion</span><button class="fwin-close" data-close="win-track1">×</button></div>
+  <div class="fwin-body">
+    <h3>Aggressive Pulse — Track Profile</h3>
+    <p>Red-dominant palette. Maximum prompt rate — every kick drum triggers a full frame mutation. The LoRA was trained on textures of underground Argentine rock: concrete walls, peeling paint, rusted metal. Identidad de barro.</p>
+    <p>Denoise strength pushed to maximum. Structure weight low. The AI is unleashed — barely constrained by Canny edges. The result is controlled chaos that mirrors the sound.</p>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n" style="color:var(--red)">MAX</div><div class="fwin-stat-l">Prompt rate</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--red)">0.85</div><div class="fwin-stat-l">Denoise</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--red)">LOW</div><div class="fwin-stat-l">Structure</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="fwin" id="win-track2">
+  <div class="fwin-bar" data-drag="win-track2"><span class="fwin-title">// Atmospheric</span><button class="fwin-close" data-close="win-track2">×</button></div>
+  <div class="fwin-body">
+    <h3>Sustained Hallucination — Track Profile</h3>
+    <p>Blue-to-purple gradient shift. Slower denoise decay — the visual transformation lags intentionally behind the audio, creating a dream-like persistence. Guitar sustain stretches the hallucination across frames.</p>
+    <p>LoRA trained on deep ocean, aurora borealis, bioluminescence. ControlNet Depth is dominant — preserving spatial depth while allowing color to bleed freely.</p>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n" style="color:var(--blue)">SLOW</div><div class="fwin-stat-l">Decay rate</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--blue)">0.45</div><div class="fwin-stat-l">Denoise</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--blue)">HIGH</div><div class="fwin-stat-l">Depth weight</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="fwin" id="win-track3">
+  <div class="fwin-bar" data-drag="win-track3"><span class="fwin-title">// Cinematic</span><button class="fwin-close" data-close="win-track3">×</button></div>
+  <div class="fwin-body">
+    <h3>Scene Tension — Track Profile</h3>
+    <p>Deep blacks with cyan accent cuts. Paulina's direction — every silence is a long take, every explosion is a jump cut. ControlNet Canny locked tight on the singer's silhouette.</p>
+    <p>Prompt sequences switch between "stillness" and "eruption" descriptors. The transition speed maps directly to the song's dynamic range. Cinema grammar applied to real-time inference.</p>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n" style="color:var(--purple)">LOCKED</div><div class="fwin-stat-l">Canny</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--purple)">VAR</div><div class="fwin-stat-l">Denoise</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--purple)">HIGH</div><div class="fwin-stat-l">Contrast</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="fwin" id="win-track4">
+  <div class="fwin-bar" data-drag="win-track4"><span class="fwin-title">// Natural Fluids</span><button class="fwin-close" data-close="win-track4">×</button></div>
+  <div class="fwin-body">
+    <h3>Winamp Memory — Track Profile</h3>
+    <p>Pure TouchDesigner fluid simulations. No AI generation for this track — the visual is born entirely from audio-reactive 2D fluid dynamics. Turbulence and velocity driven by specific frequency bands.</p>
+    <p>It harks back to early Winamp visualizations — organic randomness you watched as a kid, but controlled with 32-bit floating-point precision on cloud infrastructure. The purest audio-to-image truth.</p>
+    <div class="fwin-stat">
+      <div><div class="fwin-stat-n" style="color:var(--cyan)">NONE</div><div class="fwin-stat-l">AI gen</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--cyan)">PURE</div><div class="fwin-stat-l">TD fluid</div></div>
+      <div><div class="fwin-stat-n" style="color:var(--cyan)">32bit</div><div class="fwin-stat-l">Precision</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     SCRIPTS
+     ═══════════════════════════════════════ -->
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import{EffectComposer}from'three/addons/postprocessing/EffectComposer.js';
+import{RenderPass}from'three/addons/postprocessing/RenderPass.js';
+import{UnrealBloomPass}from'three/addons/postprocessing/UnrealBloomPass.js';
+
+// --- LOADING SCREEN ---
+const loaderEl=document.getElementById('loader');
+const loaderText=document.getElementById('loader-text');
+const loaderPhrases=['INITIALIZING SYSTEM_','LOADING PIPELINE_','CONNECTING H100_','CALIBRATING IRIS_','STATUS: ONLINE_'];
+let lp=0;
+const loaderInterval=setInterval(()=>{lp++;if(lp<loaderPhrases.length)loaderText.textContent=loaderPhrases[lp];else clearInterval(loaderInterval)},400);
+setTimeout(()=>{loaderEl.classList.add('done')},2000);
+
+// --- RENDERER ---
+const canvas=document.getElementById('three-canvas');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x000000,1);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,1000);
+camera.position.z=5;
+
+// --- BLOOM ---
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.3,0.4,0.85);
+composer.addPass(bloom);
+
+// --- WIREFRAME EYE ---
+const eyeG=new THREE.Group();scene.add(eyeG);
+const cMat=new THREE.MeshBasicMaterial({color:0x00FFE0,wireframe:true,transparent:true,opacity:0.6});
+const outer=new THREE.Mesh(new THREE.TorusGeometry(1.8,.02,16,100).scale(1,.5,.3),cMat);eyeG.add(outer);
+const irisW=new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(.7,2)),new THREE.LineBasicMaterial({color:0x00FFE0,transparent:true,opacity:0.4}));eyeG.add(irisW);
+const pupil=new THREE.Mesh(new THREE.SphereGeometry(.25,16,16),new THREE.MeshBasicMaterial({color:0xC0392B,wireframe:true,transparent:true,opacity:0.8}));eyeG.add(pupil);
+
+// --- CYAN PARTICLES ---
+const PC=15000;const pos=new Float32Array(PC*3);const vel=new Float32Array(PC*3);const orig=new Float32Array(PC*3);
+for(let i=0;i<PC;i++){const x=(Math.random()-.5)*20,y=(Math.random()-.5)*20,z=(Math.random()-.5)*10-2;pos[i*3]=x;pos[i*3+1]=y;pos[i*3+2]=z;orig[i*3]=x;orig[i*3+1]=y;orig[i*3+2]=z}
+const pGeo=new THREE.BufferGeometry();pGeo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+const particles=new THREE.Points(pGeo,new THREE.PointsMaterial({color:0x00FFE0,size:.015,sizeAttenuation:true,transparent:true,opacity:.5}));scene.add(particles);
+
+// --- RED PARTICLES (slower layer) ---
+const RC=5000;const rPos=new Float32Array(RC*3);
+for(let i=0;i<RC;i++){rPos[i*3]=(Math.random()-.5)*30;rPos[i*3+1]=(Math.random()-.5)*30;rPos[i*3+2]=(Math.random()-.5)*15-5}
+const rGeo=new THREE.BufferGeometry();rGeo.setAttribute('position',new THREE.BufferAttribute(rPos,3));
+const redP=new THREE.Points(rGeo,new THREE.PointsMaterial({color:0xC0392B,size:.02,sizeAttenuation:true,transparent:true,opacity:.25}));scene.add(redP);
+
+// --- MOUSE ---
+const mouse={x:0,y:0},mouse3D={x:0,y:0};
+document.addEventListener('mousemove',e=>{
+  mouse.x=(e.clientX/innerWidth)*2-1;mouse.y=-(e.clientY/innerHeight)*2+1;
+  mouse3D.x=mouse.x*5;mouse3D.y=mouse.y*3;
+  // Cursor
+  document.getElementById('cur-o').style.left=e.clientX+'px';
+  document.getElementById('cur-o').style.top=e.clientY+'px';
+  document.getElementById('cur-i').style.left=e.clientX+'px';
+  document.getElementById('cur-i').style.top=e.clientY+'px';
+  // HUD
+  const h=document.getElementById('hud-tl');if(h)h.textContent=`X: ${String(e.clientX).padStart(4,'0')} Y: ${String(e.clientY).padStart(4,'0')}`;
+});
+
+// --- CURSOR HOVER ---
+document.addEventListener('mouseover',e=>{
+  if(e.target.closest('a,button,.card[data-window],.btn,.flow-node[data-window],.pill,.tech-badge'))document.body.classList.add('cur-hover');
+});
+document.addEventListener('mouseout',e=>{
+  if(e.target.closest('a,button,.card[data-window],.btn,.flow-node[data-window],.pill,.tech-badge'))document.body.classList.remove('cur-hover');
+});
+
+// --- SCROLL ---
+let scrollP=0,scrollY=0;
+const sectionAccents={hero:'cyan',eye:'cyan',pipeline:'blue',show:'red',manifesto:'red'};
+const sectionTags={hero:'HOME',eye:'THE EYE',pipeline:'PIPELINE',show:'THE SHOW',manifesto:'MANIFESTO'};
+
+window.addEventListener('scroll',()=>{
+  scrollY=window.scrollY;const mx=document.documentElement.scrollHeight-innerHeight;
+  scrollP=mx>0?scrollY/mx:0;
+  const h=document.getElementById('hud-tr');if(h)h.innerHTML=`FPS: ${Math.round(fps)}<br>SCROLL: ${Math.round(scrollP*100)}%`;
+  // Nav
+  document.getElementById('nav').classList.toggle('scrolled',scrollY>80);
+  // Active section + accent color
+  let cur='';
+  document.querySelectorAll('.section,.hero').forEach(s=>{if(scrollY>=s.offsetTop-200)cur=s.id});
+  document.querySelectorAll('.nav-links a').forEach(a=>{a.classList.toggle('active',a.dataset.section===cur)});
+  // Update accent color
+  const accent=sectionAccents[cur]||'cyan';
+  document.documentElement.style.setProperty('--accent','var(--'+accent+')');
+  // Update nav section tag
+  const navTag=document.getElementById('nav-tag');
+  if(navTag)navTag.textContent=sectionTags[cur]||'';
+  // Dashboard sidebar
+  document.querySelectorAll('.dash-dot').forEach(d=>{d.classList.toggle('active',d.dataset.for===cur)});
+  // Dashboard overlay
+  const dashScroll=document.getElementById('dash-scroll');
+  const dashScrollBar=document.getElementById('dash-scroll-bar');
+  const dashSection=document.getElementById('dash-section');
+  if(dashScroll)dashScroll.textContent=Math.round(scrollP*100)+'%';
+  if(dashScrollBar)dashScrollBar.style.width=Math.round(scrollP*100)+'%';
+  if(dashSection)dashSection.textContent=sectionTags[cur]||'';
+  // Floating logo parallax
+  const flogo=document.getElementById('float-logo');
+  if(flogo){flogo.style.transform=`translateY(${scrollY*0.15}px)`}
+  // White mode detection
+  const showSection=document.getElementById('show');
+  if(showSection){const r=showSection.getBoundingClientRect();const inView=r.top<innerHeight*.6&&r.bottom>innerHeight*.4;document.body.classList.toggle('white-mode',inView)}
+});
+
+// --- SCROLL REVEAL ---
+const revObs=new IntersectionObserver(ents=>{ents.forEach(e=>{if(e.isIntersecting)e.target.classList.add('vis')})},{threshold:.08,rootMargin:'0px 0px -50px 0px'});
+document.querySelectorAll('.reveal,.reveal-scale').forEach(el=>revObs.observe(el));
+
+// --- SECTION VISIBILITY (for textures) ---
+const secObs=new IntersectionObserver(ents=>{ents.forEach(e=>{e.target.classList.toggle('vis-section',e.isIntersecting)})},{threshold:.1});
+document.querySelectorAll('.section').forEach(el=>secObs.observe(el));
+
+// --- ANIMATED COUNTERS ---
+const counterObs=new IntersectionObserver(ents=>{
+  ents.forEach(e=>{
+    if(!e.isIntersecting)return;
+    const el=e.target;if(el.dataset.counted)return;el.dataset.counted='1';
+    const target=parseInt(el.dataset.target);
+    const suffix=el.innerHTML.includes('GB')?'<span style="font-size:32px">GB</span>':'';
+    const dur=1500;const start=performance.now();
+    function tick(now){
+      const p=Math.min((now-start)/dur,1);
+      const eased=1-Math.pow(1-p,3);
+      el.innerHTML=Math.round(target*eased)+suffix;
+      if(p<1)requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+},{threshold:.5});
+document.querySelectorAll('.counter').forEach(el=>counterObs.observe(el));
+
+// --- BUTTON RIPPLE ---
+document.querySelectorAll('.btn').forEach(btn=>{
+  btn.addEventListener('click',function(e){
+    const r=document.createElement('span');r.classList.add('ripple');
+    const rect=this.getBoundingClientRect();
+    r.style.left=(e.clientX-rect.left)+'px';r.style.top=(e.clientY-rect.top)+'px';
+    this.appendChild(r);setTimeout(()=>r.remove(),600);
+  });
+});
+
+// --- FLOATING WINDOWS ---
+function openWin(id){
+  const w=document.getElementById(id);if(!w)return;
+  w.classList.add('active');
+  w.style.left=(120+Math.random()*200)+'px';
+  w.style.top=(120+Math.random()*150)+'px';
+}
+window.openWin=openWin;
+
+document.querySelectorAll('[data-window]').forEach(el=>{
+  el.addEventListener('click',()=>openWin(el.dataset.window));
+});
+document.querySelectorAll('[data-close]').forEach(btn=>{
+  btn.addEventListener('click',()=>document.getElementById(btn.dataset.close).classList.remove('active'));
+});
+document.querySelectorAll('.fwin-bar').forEach(bar=>{
+  let drag=false,ox=0,oy=0;const w=document.getElementById(bar.dataset.drag);
+  bar.addEventListener('mousedown',e=>{drag=true;ox=e.clientX-w.offsetLeft;oy=e.clientY-w.offsetTop;w.style.zIndex=2001});
+  document.addEventListener('mousemove',e=>{if(!drag)return;w.style.left=(e.clientX-ox)+'px';w.style.top=(e.clientY-oy)+'px'});
+  document.addEventListener('mouseup',()=>{drag=false});
+});
+
+// --- TYPEWRITER ---
+const phrases=['Donde el sonido toca la materia.','108GB. Zero loops. Zero repeated frames.','No decoramos shows. Los programamos.','coding my own REALITY as an Input','Each track has its own skin.','El caos tiene estructura. La estructura tiene alma.'];
+let pi=0,ci=0,deleting=false;
+function typewrite(){
+  const el=document.getElementById('typewriter');if(!el)return;
+  const phrase=phrases[pi];
+  if(!deleting){ci++;if(ci>phrase.length){setTimeout(()=>{deleting=true;typewrite()},2000);return}}
+  else{ci--;if(ci<0){ci=0;deleting=false;pi=(pi+1)%phrases.length;setTimeout(typewrite,500);return}}
+  el.textContent=phrase.substring(0,ci);
+  setTimeout(typewrite,deleting?30:60);
+}
+typewrite();
+
+// --- COMMUNITY CANVAS ---
+const cc=document.getElementById('community-canvas');
+if(cc){
+  const ctx=cc.getContext('2d');
+  const names=[
+    {name:'Scott Mann',role:'NoiseChop'},{name:'Gadi Sassoon',role:'Milan/ONU'},{name:'Jack Morgan',role:'Scope/DJR'},
+    {name:'Leon Krykhtin',role:'NYC'},{name:'Will Weinsoff',role:'OpticMystic/LF'},{name:'Diego Chavez',role:'VJ/Texas'},
+    {name:'Elektro Moon',role:'Budapest'},{name:'Patrick Taylor',role:'TheVault'},{name:'Jessica Benner',role:'PSD/EBQ'},
+    {name:'Alexander Heemskerk',role:'EmProps'},{name:'Leon Zvolinsky',role:'RFG'},{name:'Marcela Bragagnolo',role:'Unreal/NYC'},
+    {name:'Benjamin Finkel',role:'NYC'},{name:'Yuma Yanagisawa',role:'Berlin'},{name:'Andrew Sun',role:'TD-Scope'},
+    {name:'Vibor Cipan',role:'Community'},{name:'RyanOnTheInside',role:'Team'}
+  ];
+  function resizeCC(){cc.width=cc.offsetWidth;cc.height=400}resizeCC();
+  const nodes=names.map(n=>({...n,x:Math.random()*cc.width,y:Math.random()*cc.height,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3}));
+  function drawCom(){
+    ctx.clearRect(0,0,cc.width,cc.height);
+    for(let i=0;i<nodes.length;i++){
+      for(let j=i+1;j<nodes.length;j++){
+        const dx=nodes[i].x-nodes[j].x,dy=nodes[i].y-nodes[j].y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<200){ctx.beginPath();ctx.strokeStyle=`rgba(0,255,224,${(1-d/200)*.1})`;ctx.lineWidth=.5;ctx.moveTo(nodes[i].x,nodes[i].y);ctx.lineTo(nodes[j].x,nodes[j].y);ctx.stroke()}
+      }
+    }
+    nodes.forEach(n=>{
+      ctx.beginPath();ctx.arc(n.x,n.y,2.5,0,Math.PI*2);ctx.fillStyle='#00FFE0';ctx.fill();
+      ctx.font='11px JetBrains Mono';ctx.fillStyle='rgba(255,255,255,.65)';ctx.fillText(n.name,n.x+10,n.y-3);
+      ctx.font='8px JetBrains Mono';ctx.fillStyle='rgba(0,255,224,.35)';ctx.fillText(n.role,n.x+10,n.y+9);
+      n.x+=n.vx;n.y+=n.vy;
+      if(n.x<0||n.x>cc.width)n.vx*=-1;if(n.y<0||n.y>cc.height)n.vy*=-1;
+    });
+    requestAnimationFrame(drawCom);
+  }
+  drawCom();window.addEventListener('resize',resizeCC);
+}
+
+// --- ANIMATION LOOP ---
+const clock=new THREE.Clock();let fps=60,fc=0,lt=0;
+function animate(){
+  requestAnimationFrame(animate);const t=clock.getElapsedTime();
+  fc++;if(t-lt>=1){fps=fc/(t-lt);fc=0;lt=t}
+
+  // Eye
+  eyeG.rotation.y=Math.sin(t*.3)*.3+mouse.x*.4;
+  eyeG.rotation.x=Math.cos(t*.2)*.15+mouse.y*.3;
+  irisW.rotation.z=t*.5;irisW.rotation.x=t*.3;pupil.rotation.y=t*.8;
+  const sc=THREE.MathUtils.lerp(1.5,.35,Math.min(scrollP*3,1));eyeG.scale.setScalar(sc);
+  eyeG.position.y=THREE.MathUtils.lerp(0,2.5,Math.min(scrollP*2,1));
+  eyeG.position.x=THREE.MathUtils.lerp(0,-3.5,Math.min(scrollP*2,1));
+  const eo=THREE.MathUtils.lerp(.6,.1,Math.min(scrollP*3,1));
+  cMat.opacity=eo;irisW.material.opacity=eo*.7;
+
+  // White mode — fade Three.js
+  const isWhite=document.body.classList.contains('white-mode');
+  renderer.domElement.style.opacity=isWhite?'0.03':'1';
+
+  // Particles — repulsion + drift
+  const pa=pGeo.getAttribute('position');
+  for(let i=0;i<PC;i++){
+    const ix=i*3,iy=i*3+1;
+    pos[ix]+=(orig[ix]-pos[ix])*.002;pos[iy]+=(orig[iy]-pos[iy])*.002;
+    pos[iy]+=Math.sin(t*.5+i*.01)*.0003;
+    const dx=pos[ix]-mouse3D.x,dy=pos[iy]-mouse3D.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<2.5){const f=(2.5-d)*.01;pos[ix]+=(dx/d)*f;pos[iy]+=(dy/d)*f}
+    pos[iy]=orig[iy]+scrollY*.0004*(1+(i%5)*.2);
+  }
+  pa.needsUpdate=true;
+  redP.rotation.y=t*.02;const ra=rGeo.getAttribute('position');
+  for(let i=0;i<RC;i++)rPos[i*3+1]+=Math.sin(t*.2+i*.005)*.0002;ra.needsUpdate=true;
+  bloom.strength=THREE.MathUtils.lerp(1.3,.5,Math.min(scrollP*2,1));
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});
+</script>
+</body>
+</html>
